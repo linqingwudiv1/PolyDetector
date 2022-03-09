@@ -4,4 +4,4 @@ cmake_minimum_required(VERSION 3.10)
 project(PolyDetector)
 
 # add the executable
-add_executable(PolyDetector PolyDetector.h PolyDetector.cpp main.cpp)
+add_executable(${PROJECT_NAME} PolyDetector.h PolyDetector.cpp main.cpp geom.h)

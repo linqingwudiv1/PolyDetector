@@ -8,9 +8,9 @@
 
 
 FGEdge FGEdge::Invaild;
-FGVectex FGVectex::Invaild;
-using PointType = FGVectex;
-static int iComparePointOrder(const FGVectex& p1, const FGVectex& p2)
+FGVertex FGVertex::Invaild;
+using PointType = FGVertex;
+static int iComparePointOrder(const FGVertex& p1, const FGVertex& p2)
 {
 	if (p1.Y < p2.Y)
 		return -1;
@@ -25,7 +25,7 @@ static int iComparePointOrder(const FGVectex& p1, const FGVectex& p2)
 	return 1;
 }
 
-static bool bComparePointOrder(const FGVectex& p1, const FGVectex& p2)
+static bool bComparePointOrder(const FGVertex& p1, const FGVertex& p2)
 {
 	return iComparePointOrder(p1, p2) < 0;
 }
@@ -127,7 +127,7 @@ void UTestMgr::UpdateLines(TArray<FGEdge>& OriginLines)
 	});
 	
 	DetectAllIntersectPoint();
-	SweepLine();
+	//SweepLine();
 }
 
 void UTestMgr::GenerateGraph()
@@ -141,6 +141,7 @@ void UTestMgr::GenerateGraph()
 		auto &&seg_endP = seg.EndPoint();
 		for (auto& p:seg.intersections)
 		{
+
 		}
 	}
 	
@@ -188,7 +189,7 @@ void UTestMgr::DetectAllIntersectPoint()
 			{
 				//计算相交点
 				FGEdge& distLine = FindOriginLines(otherIntesectLineId);
-				FGVectex intersectPoint;
+				FGVertex intersectPoint;
 
 				if (took.Find(TPair<uint32, uint32>(targetLine.Id, distLine.Id)) != nullptr)
 				{
@@ -210,12 +211,22 @@ void UTestMgr::DetectAllIntersectPoint()
 				{
 					if(segment->intersections.Find(intersectPoint.Id) == INDEX_NONE)
 					{
-						UE_LOG(LogTemp, Log, TEXT("IntersectPoint {%s} on Line[{%s},{%s}]"),*intersectPoint.ToString(), *segment->StartPoint().ToString(), *segment->EndPoint().ToString());
+						UE_LOG(LogTemp, Log, TEXT("IntersectPoint {%s} on Line[{%s},{%s}]"), *intersectPoint.ToString(), *segment->StartPoint().ToString(), *segment->EndPoint().ToString());
 						segment->intersections.Add(intersectPoint.Id);
+						
+						//segment的端点即为交点
+						if( segment->StartPoint().Equals(intersectPoint) )
+						{
+							segment->startPId = intersectPoint.Id;
+						}
+						else if( segment->EndPoint().Equals(intersectPoint) )
+						{
+							segment->endPId = intersectPoint.Id;
+						}
 					}
 				}
 
-				//标记访问,无向图
+				//DFS标记访问,无向图
 				took.Add(TPair<uint32, uint32>(targetLine.Id, distLine.Id));
 				took.Add(TPair<uint32, uint32>(distLine.Id, targetLine.Id));
 			}
@@ -223,173 +234,106 @@ void UTestMgr::DetectAllIntersectPoint()
 	}
 
 	{
-#if 0 //业务上不必要,可以忽视(基本永远不会出现叠线段)
-		//处理重叠线段,并进行合并
-		uint32 nCol = 0;
-		TArray<uint32> pids;
-
-		uint32 times = 0;
-		bool bOk = false;
-		do
-		{
-			//DFS标记
-			TSet<TPair<uint32, uint32>> took;
-			bOk = true;
-			for (FGEdge& seg_a : mOriginLines)
-			{
-				if (seg_a.intersections.Num() < 2) { continue; }
-
-				//一般式直线方程系数
-				float a, b, c;
-				GetLineCoefficientFromTwoPoint(seg_a.StartPoint(), seg_a.EndPoint(), a, b, c);
-
-				for (FGEdge& seg_b : mOriginLines)
-				{
-					if (seg_a.Id == seg_b.Id) { continue; }
-					if (seg_b.intersections.Num() < 2) { continue; }
-					check(&seg_a != &seg_b);
-
-					took.Add(TPair<uint32, uint32>(seg_a.Id, seg_b.Id));
-					took.Add(TPair<uint32, uint32>(seg_b.Id, seg_a.Id));
-
-					uint32_t nFound = 0;
-					float maxLineDist = 0;
-					pids.Empty();
-
-					//查询两条线段间的公共交点
-					for (uint32& p1Id : seg_a.intersections)
-					{
-						for (uint32& p2Id : seg_b.intersections)
-						{
-							if (p1Id == p2Id)
-							{
-								nFound++;
-								pids.Add(p1Id);
-							}
-
-							float d = FMath::Sqrt(seg_a.DistanceSquared(this->FindIntersection(p2Id)));
-
-							//float d = vec::lineDist(a, b, c, vec(intersectionPoints[pid2].x, intersectionPoints[pid2].y));
-							if (d > maxLineDist) { maxLineDist = d; }
-						}
-					}
-
-					if (nFound >= 2)
-					{
-						//说明重叠
-						bOk = false;
-
-						if (maxLineDist <= 1e-5f)
-						{
-							//do somathing :
-							//两线段共线....(进行合并操作)
-						}
-						else
-						{
-						}
-					}
-				}
-			}
-		} while (!bOk);
-#endif
-	}
-
-}
-
-void UTestMgr::DetectAllIntersectPoint1()
-{
-	//给orginline分配 Id
-	for (int32 i = 0; i < mOriginLines.Num(); i++)
-	{
-		auto &&p_start = mOriginLines[i].StartPoint();
-		auto &&p_end   = mOriginLines[i].EndPoint();
-
-		TArray<FVector2f*> olp;
-		bool bPoint = false; // 后面也不一定是点,而是环
-		if(p_start.Equals(p_end) )
-		{
-			olp.Add(&p_start);
-			bPoint = true;
-		}
-		else 
-		{
-			olp.Add(&p_start);
-			olp.Add(&p_end);
-		}
+		//生成Vertex与邻域拓扑关系
 		
-		for (auto &lp : olp)
 		{
-			if (!IsExistVectex(*lp))
-			{
-				FGVectex vectex;
-				vectex.Set(lp->X, lp->Y);
-				vectex.Id = NewVetexId();
-				mVectex.Emplace(vectex);
-			}
+			//写入所有顶点
+			CreateVertex();
+			//}
 		}
-		// mOriginLines[i].Id = this->NewEdgeId();
-		// mOriginLines[i].startPId = this->NewVetexId();
-		// mOriginLines[i].endPId = this->NewVetexId();
+
+		{
+			//建立顶点的邻域
+			GenerateAdj();
+		}
 	}
 }
 
-void UTestMgr::SweepLine()
+void UTestMgr::CreateVertex()
 {
-	mLines.Empty();
-
-	//从交点中生成线段
-	for (FGEdge &seg : mOriginLines)
+	//写入所有顶点
+	mG.mVertex.Empty();
+	for (auto& p : mIntersections)
 	{
-		if(seg.intersections.Num() < 2 ) { continue; }
-		FVector2f &&startp = seg.StartPoint();
-		//对交点进行排序
+		mG.AddVertex(p);
+	}
+
+	for (int32 idx = 0; idx < mOriginLines.Num(); idx++)
+	{
+		FGEdge& segment = mOriginLines[idx];
+
+		for (auto& vectexWrapper : { TPair<uint32, FVector2f>(segment.startPId, segment.StartPoint()),TPair<uint32, FVector2f>(segment.endPId ,segment.EndPoint()) })
+		{
+			if(this->mG.mVertex.Find(vectexWrapper.Key) == nullptr)
+			{
+				FGVertex v(vectexWrapper.Value);
+				v.Id = vectexWrapper.Key;
+				mG.AddVertex(v);
+			}
+		}
+	}
+}
+
+void UTestMgr::GenerateAdj()
+{
+	//建立顶点的邻域
+	for (int32 idx = 0; idx < mOriginLines.Num(); idx++)
+	{
+		auto& seg = mOriginLines[idx];
+		auto&& startp = seg.StartPoint();
+		//对交点进行排序(按到startP的距离升序)
 		seg.intersections.Sort([this, &startp](uint32 aid, uint32 bid)
+			{
+				const auto& p1 = FindIntersection(aid);
+				const auto& p2 = FindIntersection(bid);
+				//note:交点为起始端点时, DistSquared == 0, infine
+				return FVector2f::DistSquared(startp, p1) < FVector2f::DistSquared(startp, p2);
+			});
+		//test:情况:
+		// e.g:
+		//1.intersections0 == startpid ||  intersectionsMax == endPid
+		// start---------------1-------------------2--------------------3-------------------------end
+		// start==1------------2-------------------3--------------------4-------------------------end
+
+		TArray<uint32> vertices;
+		if (seg.intersections.Num() == 0)
 		{
-			const auto &p1 = FindIntersection(aid);
-			const auto &p2 = FindIntersection(bid);
-			return FVector2f::DistSquared(startp, p1) < FVector2f::DistSquared(startp, p2);
-		});
-
-		//从交点生成多边形
-		for (int idx = 1; idx < seg.intersections.Num(); idx++)
+			//无交点则前后端点互为邻居
+			vertices.Append({ seg.startPId, seg.endPId });
+		}
+		else
 		{
-			bool bFoundSharedSeg = false;
-			uint32 StartIdx = seg.intersections[idx - 1];
-			uint32 EndIdx = seg.intersections[idx];
-
-			FGVectex &p1 = FindIntersection(StartIdx);
-			FGVectex &p2 = FindIntersection(EndIdx);
-			if (p1.Equals(p2))
+			if (seg.startPId != seg.intersections[0])
 			{
-				UE_LOG(LogTemp,Log, TEXT("P%u P%u are the same for line #%u"), StartIdx, EndIdx, seg.Id);
-				//assert(pointsDiffer(p1, p2));
+				//第一个交点非起始点
+				vertices.Add(seg.startPId);
 			}
 
-			for(FGEdge &seg_shared : mLines)
-			{
-				//判断线段是否存在
-				//auto min_seg = FMathf::Min(seg_shared.startPId, seg_shared.endPId);
-				//auto max_seg = FMathf::Max(seg_shared.startPId, seg_shared.endPId);
-				//
-				//auto min_vec = FMathf::Min(StartIdx, EndIdx);
-				//auto max_vec = FMathf::Max(StartIdx, EndIdx);
-				//
-				//min_seg == min_vec;
-				//max_seg == max_vec;
+			vertices.Append(seg.intersections);
 
-				bool cond1 = seg_shared.startPId == StartIdx || seg_shared.startPId == EndIdx;
-				bool cond2 = seg_shared.endPId == StartIdx || seg_shared.endPId == EndIdx;
-				if(cond1 && cond2)
-				{
-					bFoundSharedSeg = true;
-					break;
-				}
-			}
-
-			if(!bFoundSharedSeg)
+			if (seg.endPId != seg.intersections[seg.intersections.Num() - 1])
 			{
-				mLines.Add(NewLine(p1, p2, seg));
+				//最后的交点非结尾点
+				vertices.Add(seg.endPId);
 			}
+		}
+
+		//compute of vertex
+		TArray<uint32>* pre = nullptr;
+		TArray<uint32>* cur = nullptr;
+		for (int32 idx = 1; idx < vertices.Num(); idx++)
+		{
+			uint32 startPid = vertices[idx - 1];
+			uint32 endPid = vertices[idx];
+			//endPid->
+			if (pre == nullptr)
+			{
+				pre = mG.topology. Find(startPid);
+			}
+			cur = mG.topology.Find(endPid);
+			pre->Add(endPid);
+			cur->Add(startPid);
+			pre = cur;
 		}
 	}
 }
@@ -406,7 +350,7 @@ uint32 UTestMgr::NewVetexId()
 	return id++;
 }
 
-FGEdge UTestMgr::NewLine(const FGVectex& startP, const  FGVectex& endP, const  FGEdge& originLine)
+FGEdge UTestMgr::NewLine(const FGVertex& startP, const  FGVertex& endP, const  FGEdge& originLine)
 {
 	FGEdge edge;
 	edge.Id = NewEdgeId();
@@ -435,37 +379,39 @@ FGEdge& UTestMgr::FindOriginLines(const uint32 lid)
 			return edge;
 		}
 	}
-	
+
 	return FGEdge::Invaild;//FGEdge();
 }
 
-FGVectex& UTestMgr::FindIntersection(const uint32 pid)
+FGVertex& UTestMgr::FindIntersection(const uint32 pid)
 {
-	for (FGVectex& vectex : mIntersections)
+	for (FGVertex& vectex : mIntersections)
 	{
 		if(vectex.Id == pid)
 		{
 			return vectex;
 		}
 	}
-	return FGVectex::Invaild;
+	return FGVertex::Invaild;
 }
 
-FGVectex& UTestMgr::FindVectex(const uint32 pid)
+FGVertex& UTestMgr::FindVertex(const uint32 pid)
 {
-	for (FGVectex& vectex : mVectex)
+	auto result = mG.mVertex.Find(pid);
+	
+	if(result == nullptr)
 	{
-		if (vectex.Id == pid)
-		{
-			return vectex;
-		}
+		return *result;
 	}
-	return FGVectex::Invaild;
+	else 
+	{
+		return FGVertex::Invaild;
+	}
 }
 
 bool UTestMgr::IsExistShareIntersection(const FVector2f& p)
 {
-	for (FGVectex vectex : mIntersections)
+	for (FGVertex vectex : mIntersections)
 	{
 		if (vectex.Equals(p)) 
 		{ 
@@ -476,11 +422,11 @@ bool UTestMgr::IsExistShareIntersection(const FVector2f& p)
 }
 
 
-bool UTestMgr::IsExistVectex(const FVector2f& p)
+bool UTestMgr::IsExistVertex(const FVector2f& p)
 {
-	for (FGVectex vectex : mVectex)
+	for (auto &vectex : mG.mVertex)
 	{
-		if (vectex.Equals(p))
+		if (vectex.Value.Equals(p))
 		{
 			return true;
 		}
@@ -496,4 +442,57 @@ void FGEdge::Swap()
 	this->startPId = this->endPId;
 	this->endPId = tmp;
 	this->Reverse();
+}
+
+bool FGraph::AddVertex(FGVertex& vertex)
+{
+	#if WITH_EDITOR
+	check(this->mVertex.Find(vertex.Id) == nullptr);
+	check(this->topology.Find(vertex.Id) == nullptr);
+	#endif
+	this->mVertex.Add(vertex.Id, vertex);
+	this->topology.Add(vertex.Id, TArray<uint32>() );
+	return true;
+}
+
+FGVertex* FGraph::GetClockwiseVertex(FGVertex* prev, FGVertex* cur)
+{
+	FVector2f d;
+	if(prev == nullptr)
+	{
+		d = FVector2f{0,-1}; 
+	}
+	else
+	{
+		d = (*cur) - (*prev); 
+	}
+
+	TArray<uint32> *adjs = this->topology.Find(cur->Id);
+
+	for (auto pid : *adjs)
+	{
+	}
+}
+
+FGVertex* FGraph::GetCounterClockwiseVertex(FGVertex* prev, FGVertex* cur)
+{
+	return nullptr;
+}
+
+FGVertex* FGraph::GetLeftMostVertex()
+{
+	//MinEle
+	FGVertex* Min = nullptr;
+
+	for(auto &c :this->mVertex)
+	{
+		if(Min == nullptr){Min = &c.Value; continue;}
+		bool cond1 = Min->X < c.Value.X;
+		bool cond2 = Min->X == c.Value.X && Min->Y < c.Value.Y;
+		if( cond1 || cond2)
+		{
+			Min = &c.Value;
+		}
+	}
+	return Min;
 }

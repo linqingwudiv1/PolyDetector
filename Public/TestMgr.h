@@ -8,17 +8,17 @@
 #include "SegmentTypes.h"
 #include "TestMgr.generated.h"
 
-struct FGVectex : public FVector2f
+struct FGVertex : public FVector2f
 {
 public:
-	static FGVectex Invaild;
+	static FGVertex Invaild;
 
-	FGVectex()= default;
-	FGVectex(const FVector2f &vec): FVector2f(vec){}
+	FGVertex()= default;
+	FGVertex(const FVector2f &vec): FVector2f(vec){}
 public:
 	uint32 Id;
 	//邻域
-	TArray<uint32> adjacencies;
+	//TArray<uint32> adjacencies;
 };
 
 struct FGEdge : public UE::Geometry::FSegment2f
@@ -41,12 +41,19 @@ public:
 	TArray<uint32> intersections;
 };
 
-//生成无向图,用于图形绘制
+//生成无向图拓扑关系,用于图形绘制
 struct FGraph
 {
 public:
-	//完美连通图
-	TMap<FGVectex, TArray<FGEdge>> graph;
+	bool AddVertex(FGVertex & vertex);
+public:
+	FGVertex* GetLeftMostVertex();
+	FGVertex* GetClockwiseVertex(FGVertex* prev, FGVertex* cur);
+	FGVertex* GetCounterClockwiseVertex(FGVertex* prev, FGVertex* cur);
+public:
+	//连通图
+	TMap<uint32, TArray<uint32>> topology;
+	TMap<uint32, FGVertex> mVertex;
 };
 
 /**
@@ -62,17 +69,19 @@ public:
 protected:
 	
 	void DetectAllIntersectPoint();
-	void DetectAllIntersectPoint1();
-	void SweepLine();
+	//void SweepLine();
+	void CreateVertex();
+	void GenerateAdj();
 
 	static uint32 NewEdgeId();
 	static uint32 NewVetexId();
+
 	static void GetLineCoefficientFromTwoPoint(FVector2f p1, FVector2f p2, float& out_a, float& out_b, float& out_c);
 protected:
-	FGEdge NewLine(const FGVectex& startP, const  FGVectex& endP, const  FGEdge& originLine);
+	FGEdge NewLine(const FGVertex& startP, const  FGVertex& endP, const  FGEdge& originLine);
 	FGEdge& FindOriginLines(const uint32 lid);
-	FGVectex& FindIntersection(const uint32 pid);
-	FGVectex& FindVectex(const uint32 pid);
+	FGVertex& FindIntersection(const uint32 pid);
+	FGVertex& FindVertex(const uint32 pid);
 
 	/// <summary>
 	/// 点重叠为标准
@@ -80,10 +89,11 @@ protected:
 	/// <param name="p"></param>
 	/// <returns></returns>
 	bool IsExistShareIntersection(const FVector2f& p);
-	bool IsExistVectex(const FVector2f& p);
+	bool IsExistVertex(const FVector2f& p);
 protected:
+	FGraph mG;
 	TArray<FGEdge> mOriginLines;
-	TArray<FGEdge> mLines;
-	TArray<FGVectex> mIntersections;
-	TArray<FGVectex> mVectex;
+	//TArray<FGEdge> mLines;
+	TArray<FGVertex> mIntersections;
+	//TArray<FGVertex> mVertex;
 };
